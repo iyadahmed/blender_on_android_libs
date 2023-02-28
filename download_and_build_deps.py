@@ -114,7 +114,7 @@ if __name__ == "__main__":
         "freetype",
         "freetype-2.12.1.tar.gz",
         [f"-DCMAKE_FIND_ROOT_PATH={LIB_BUILD_OUTPUT_PATH / 'brotli'}", f"-DFT_REQUIRE_BROTLI=ON"]
-        # Brotli needs to be build before this
+        # Brotli needs to be built before this
     )
     build_pkg_cmake("jpeg", "libjpeg-turbo-2.1.3.tar.gz")
     build_pkg_cmake(
