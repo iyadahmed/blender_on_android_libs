@@ -1,11 +1,12 @@
+import multiprocessing as mp
 import os
 import platform
+import shutil
+import subprocess as sp
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
-import subprocess as sp
-import multiprocessing as mp
+from typing import List, Optional
 
 import requests
 from tqdm import tqdm
@@ -70,18 +71,23 @@ def download_pkg_source(pkg_filename: str):
     return download_file(url, save_path)
 
 
-def build_pkg_cmake(pkg_name: str, pkg_filename: str):
+def build_pkg_cmake(
+    pkg_name: str, pkg_filename: str, extra_cmake_build_args: Optional[List[str]] = None, source_dir: str = "."
+):
     filepath = download_pkg_source(pkg_filename)
     with tarfile.open(filepath) as file:
         top_dir = os.path.commonpath(file.getnames())
         assert top_dir != "."
         file.extractall(SOURCES_DOWNLOAD_PATH)
 
+    if extra_cmake_build_args is None:
+        extra_cmake_build_args = []
+
     sp.run(
         [
             "cmake",
             "-S",
-            ".",
+            source_dir,
             "-B",
             "_build",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -91,6 +97,7 @@ def build_pkg_cmake(pkg_name: str, pkg_filename: str):
             f"-DCMAKE_ANDROID_ARCH_ABI={ABI}",
             f"-DCMAKE_ANDROID_NDK={NDK}",
             "-DCMAKE_ANDROID_STL_TYPE=c++_static",
+            *extra_cmake_build_args,
         ],
         cwd=SOURCES_DOWNLOAD_PATH / top_dir,
     )
@@ -103,10 +110,25 @@ def build_pkg_cmake(pkg_name: str, pkg_filename: str):
 
 if __name__ == "__main__":
     build_pkg_cmake("brotli", "brotli-v1.0.9.tar.gz")
+    build_pkg_cmake(
+        "freetype",
+        "freetype-2.12.1.tar.gz",
+        [f"-DCMAKE_FIND_ROOT_PATH={LIB_BUILD_OUTPUT_PATH / 'brotli'}", f"-DFT_REQUIRE_BROTLI=ON"]
+        # Brotli needs to be build before this
+    )
+    build_pkg_cmake("jpeg", "libjpeg-turbo-2.1.3.tar.gz")
+    build_pkg_cmake(
+        "png",
+        "libpng-1.6.37.tar.xz",
+        ["-DHAVE_LD_VERSION_SCRIPT=OFF"]
+        # Cross-compiling for Android fails without the previous option
+        # https://stackoverflow.com/a/62541328/8094047
+    )
+    build_pkg_cmake("zstd", "zstd-1.5.0.tar.gz", source_dir="build/cmake")
 
+    # TODO: build_pkg_meson function
     download_pkg_source("libepoxy-1.5.10.tar.gz")
-    download_pkg_source("freetype-2.12.1.tar.gz")
-    download_pkg_source("libjpeg-turbo-2.1.3.tar.gz")
-    download_pkg_source("libpng-1.6.37.tar.xz")
+
+    # TODO:
+    # clone python-cmake-buildsystem and build it
     download_pkg_source("Python-3.10.9.tar.xz")
-    download_pkg_source("zstd-1.5.0.tar.gz")
